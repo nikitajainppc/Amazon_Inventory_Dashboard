@@ -29,9 +29,6 @@ def load_file(uploaded_file):
     else:
         raise ValueError("Unsupported file format. Please upload .csv, .txt, .tsv, .xls, or .xlsx")
 
-# ------------------ REQUIRED FIELDS ------------------
-required_columns = ['asin', 'asin1', 'quantity']
-
 # ------------------ FILE PROCESSING ------------------
 if uploaded_file:
     try:
@@ -43,12 +40,19 @@ if uploaded_file:
         st.dataframe(df.head())
 
         # ------------------ VALIDATE COLUMNS ------------------
-        missing = [col for col in required_columns if col not in df.columns]
+        has_asin = 'asin' in df.columns
+        has_asin1 = 'asin1' in df.columns
+        has_quantity = 'quantity' in df.columns
 
-        if missing:
-            st.error(f"🚫 Missing required columns: {', '.join(missing)}")
+        if not (has_asin or has_asin1):
+            st.error("🚫 Missing required ASIN column: either 'asin' or 'asin1' must be present.")
+        elif not has_quantity:
+            st.error("🚫 Missing required column: 'quantity'")
         else:
-            st.success("✅ All required columns are present.")
+            st.success("✅ Required columns are present.")
+
+            # Use the correct ASIN column
+            df['asin_final'] = df['asin'] if has_asin else df['asin1']
 
             # Ensure quantity is numeric
             df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
@@ -56,13 +60,13 @@ if uploaded_file:
             # ------------------ METRICS ------------------
             st.markdown("### 📊 Inventory Summary")
             col1, col2 = st.columns(2)
-            col1.metric("Total Unique ASINs", df['asin'].nunique())
+            col1.metric("Total Unique ASINs", df['asin_final'].nunique())
             col2.metric("Total Quantity", int(df['quantity'].sum()))
 
             # ------------------ CHART ------------------
             st.markdown("### 📈 Top 10 ASINs by Quantity")
-            top_asins = df.groupby('asin')['quantity'].sum().sort_values(ascending=False).head(10).reset_index()
-            st.bar_chart(top_asins.set_index('asin'))
+            top_asins = df.groupby('asin_final')['quantity'].sum().sort_values(ascending=False).head(10).reset_index()
+            st.bar_chart(top_asins.set_index('asin_final'))
 
             # ------------------ RAW DATA + STATUS ------------------
             st.subheader(":clipboard: Full Inventory Data")
@@ -94,10 +98,10 @@ else:
 with st.expander("❓ Why is my file not uploading or showing data?"):
     st.markdown("""
     - ✅ You can upload `.csv`, `.txt`, `.tsv`, `.xls`, or `.xlsx` files.
-    - 🔑 Required columns: `asin`, `asin1`, and `quantity` (case-insensitive).
+    - 🔑 Your file must include either `asin` **or** `asin1`, and must include `quantity`.
     - 🧾 Tab-delimited `.txt` files from Amazon are supported.
     - ⚠️ Avoid uploading empty or corrupted files.
-    - 📤 Use the 'Active Listings Report' from Amazon Seller Central for best results.
+    - 📤 Use the 'Active Listings Report' from Amazon Seller Central only.
     """)
 
 # ------------------ FOOTER ------------------
