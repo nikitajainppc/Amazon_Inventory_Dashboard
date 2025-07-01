@@ -1,25 +1,42 @@
 import streamlit as st
 import pandas as pd
+import os
 
 # ------------------ PAGE CONFIGURATION ------------------
 st.set_page_config(page_title="Amazon Inventory Dashboard", layout="wide")
 st.markdown("## 📦 Amazon Inventory Dashboard")
-st.markdown("Upload your **Active Inventory Report** in `.txt` or `.csv` format.")
+st.markdown("Upload your **Active Inventory Report** in any format: `.csv`, `.txt`, `.xls`, `.xlsx`, or `.tsv`.")
 
 # ------------------ FILE UPLOADER ------------------
-uploaded_file = st.file_uploader("Upload Inventory Report", type=['csv', 'txt'])
+uploaded_file = st.file_uploader("Upload Inventory Report", type=None)  # Allow all file types
 
-# Required fields in Amazon inventory file
-required_columns = ['sku', 'quantity', 'fulfillment-channel']
+# ------------------ FILE LOADER FUNCTION ------------------
+def load_file(uploaded_file):
+    filename = uploaded_file.name.lower()
+    ext = os.path.splitext(filename)[1]
 
-# ------------------ PROCESS FILE ------------------
+    if ext == '.csv':
+        return pd.read_csv(uploaded_file)
+    elif ext == '.tsv':
+        return pd.read_csv(uploaded_file, delimiter='\t')
+    elif ext in ['.xls', '.xlsx']:
+        return pd.read_excel(uploaded_file)
+    elif ext == '.txt':
+        content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
+        delimiter = '\t' if '\t' in content else ','
+        uploaded_file.seek(0)  # Reset pointer after reading
+        return pd.read_csv(uploaded_file, delimiter=delimiter)
+    else:
+        raise ValueError("Unsupported file format. Please upload .csv, .txt, .tsv, .xls, or .xlsx")
+
+# ------------------ REQUIRED FIELDS ------------------
+required_columns = ['asin', 'quantity']
+
+# ------------------ FILE PROCESSING ------------------
 if uploaded_file:
     try:
-        # Determine delimiter based on file type
-        if uploaded_file.name.endswith('.txt'):
-            df = pd.read_csv(uploaded_file, delimiter='\t')
-        else:
-            df = pd.read_csv(uploaded_file)
+        df = load_file(uploaded_file)
+        df.columns = df.columns.str.lower().str.strip()  # Normalize column names
 
         st.success("✅ File uploaded successfully!")
         st.markdown("### 🔍 File Preview")
@@ -33,35 +50,31 @@ if uploaded_file:
         else:
             st.success("✅ All required columns are present.")
 
-            # ------------------ DASHBOARD METRICS ------------------
+            # ------------------ METRICS ------------------
             st.markdown("### 📊 Inventory Summary")
-
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Total SKUs", df['sku'].nunique())
+            col1, col2 = st.columns(2)
+            col1.metric("Total Unique ASINs", df['asin'].nunique())
             col2.metric("Total Quantity", int(df['quantity'].sum()))
-            col3.metric("Fulfillment Channels", ', '.join(df['fulfillment-channel'].dropna().unique()))
 
-            # ------------------ OPTIONAL: ADVANCED STATS ------------------
-            st.markdown("### 📈 Inventory Breakdown")
-            breakdown = df.groupby('fulfillment-channel')['quantity'].sum().reset_index()
-            st.bar_chart(breakdown.set_index('fulfillment-channel'))
+            # ------------------ CHART ------------------
+            st.markdown("### 📈 Top 10 ASINs by Quantity")
+            top_asins = df.groupby('asin')['quantity'].sum().sort_values(ascending=False).head(10).reset_index()
+            st.bar_chart(top_asins.set_index('asin'))
 
     except Exception as e:
-        st.error(f"❌ Error processing file: {str(e)}")
-
+        st.error(f"❌ Error reading file: {e}")
 else:
-    st.info("📂 Please upload a valid `.csv` or `.txt` file to get started.")
+    st.info("📂 Please upload a valid inventory file to get started.")
 
 # ------------------ FAQ / HELP SECTION ------------------
 with st.expander("❓ Why is my file not uploading or showing data?"):
     st.markdown("""
-    - ✅ Ensure the file is in `.csv` or `.txt` format.
-    - 🔑 It must include required columns like `sku`, `quantity`, and `fulfillment-channel`.
-    - 🧾 File may be tab-delimited (`.txt`) or comma-delimited (`.csv`).
-    - ⚠️ Avoid uploading files that are empty or corrupted.
-    - 📤 Use the 'Active Inventory Report' downloaded from Amazon Seller Central.
+    - ✅ You can upload `.csv`, `.txt`, `.tsv`, `.xls`, or `.xlsx` files.
+    - 🔑 Required columns: `asin` and `quantity` (case-insensitive).
+    - 🧾 Tab-delimited `.txt` files from Amazon are supported.
+    - ⚠️ Avoid uploading empty or corrupted files.
+    - 📤 Use the 'Active Listings Report' from Amazon Seller Central for best results.
     """)
 
 # ------------------ FOOTER ------------------
-st.markdown("---")
-st.markdown("Made with ❤️ using Streamlit")
+st.markdown("---") 
